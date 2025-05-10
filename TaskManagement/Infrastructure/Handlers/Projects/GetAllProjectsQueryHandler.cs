@@ -1,34 +1,27 @@
-﻿using MediatR;
+﻿using System.Text.Json;
+using Application.DTOs.Pagination;
+using Application.DTOs.Projects;
+using Application.Interfaces;
+using Application.Queries.Projects;
+using AutoMapper;
+using Domain.Models;
+using MediatR;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
-// Reference repository interface
-// Reference Pagination DTOs
-// Reference Domain models
-using AutoMapper; // Use AutoMapper
-// using TaskManagement.Application.Mapping; // Removed Mapperly interfaces
-// Needed for AnyAsync, ToListAsync etc.
-// For pagination and sorting extensions
-// Reference custom exceptions
-using Microsoft.Extensions.Caching.Distributed; // Needed for IDistributedCache
-using System.Text.Json;
-using Application.Queries.Projects; // Needed for JSON serialization/deserialization for caching
 
-namespace TaskManagement.Infrastructure.Handlers.Projects
+
+
+namespace Infrastructure.Handlers.Projects
 {
     // Query Handler for getting all projects
     public class GetAllProjectsQueryHandler(
         IRepository<Project> projectRepository,
         ILogger<GetAllProjectsQueryHandler> logger,
-        IMapper mapper, // Inject AutoMapper's IMapper
+        IMapper mapper, 
         IDistributedCache cache)
         : IRequestHandler<GetAllProjectsQuery, PagedResultDto<ProjectDto>>
     {
-        private readonly IRepository<Project> _projectRepository = projectRepository; // Dependency on Application interface
-
-        // Inject AutoMapper's IMapper
-        // Inject IDistributedCache for caching
-
-
-        // Inject IDistributedCache
+        private readonly IRepository<Project> _projectRepository = projectRepository; 
 
         public async Task<PagedResultDto<ProjectDto>> Handle(GetAllProjectsQuery request, CancellationToken cancellationToken)
         {
