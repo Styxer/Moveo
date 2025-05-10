@@ -1,0 +1,38 @@
+﻿@page "/Tasks/{taskId:guid}"
+@model DetailsModel
+@{
+    ViewData["Title"] = "Task Details";
+}
+
+<h1>Task Details</h1>
+
+@if (Model.Task != null)
+{
+    <div>
+        <h4>@Model.Task.Title</h4>
+        <hr />
+        <dl class="row">
+            <dt class="col-sm-2">
+                @Html.DisplayNameFor(model => model.Task.Description)
+            </dt>
+            <dd class="col-sm-10">
+                @Html.DisplayFor(model => model.Task.Description)
+            </dd>
+            <dt class="col-sm-2">
+                @Html.DisplayNameFor(model => model.Task.Status)
+            </dt>
+            <dd class="col-sm-10">
+                @Html.DisplayFor(model => model.Task.Status)
+            </dd>
+        </dl>
+    </div>
+    <div>
+        <a asp-page="./Edit" asp-route-taskId="@Model.Task.Id">Edit</a> |
+        <a asp-page="./Delete" asp-route-taskId="@Model.Task.Id">Delete</a> |
+        <a asp-page="/Projects/Details" asp-route-id="@Model.ProjectId">Back to Project Details</a>
+    </div>
+}
+else
+{
+    <p>Task not found.</p>
+}

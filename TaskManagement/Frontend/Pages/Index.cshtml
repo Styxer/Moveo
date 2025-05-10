@@ -1,0 +1,105 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Projects";
+}
+
+<h1>Projects</h1>
+
+@* TODO: Add filtering/sorting form *@
+@* <form method="post">
+    <div class="form-group">
+        <label asp-for="QueryParameters.SearchQuery"></label>
+        <input asp-for="QueryParameters.SearchQuery" class="form-control" />
+    </div>
+    <button type="submit" class="btn btn-primary">Search</button>
+</form> *@
+
+<p>
+    <a asp-page="Projects/Create">Create New Project</a>
+</p>
+
+@if (Model.Projects != null && Model.Projects.Items.Any())
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>
+                    @* Example of sorting links *@
+                    <a asp-page="./Index" asp-route-pageNumber="@Model.QueryParameters.PageNumber" asp-route-pageSize="@Model.QueryParameters.PageSize" asp-route-searchQuery="@Model.QueryParameters.SearchQuery" asp-route-sortBy="Name" asp-route-sortOrder="@(Model.QueryParameters.SortBy == "Name" && Model.QueryParameters.SortOrder == "asc" ? "desc" : "asc")">
+                        Name
+                        @if (Model.QueryParameters.SortBy == "Name")
+                        {
+                            @(Model.QueryParameters.SortOrder == "asc" ? "▲" : "▼")
+                        }
+                    </a>
+                </th>
+                <th>
+                    Description
+                </th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.Projects.Items)
+            {
+                <tr>
+                    <td>
+                        @Html.DisplayFor(modelItem => item.Name)
+                    </td>
+                    <td>
+                        @Html.DisplayFor(modelItem => item.Description)
+                    </td>
+                    <td>
+                        <a asp-page="Projects/Details" asp-route-id="@item.Id">Details</a> |
+                        <a asp-page="Projects/Edit" asp-route-id="@item.Id">Edit</a> |
+                        <a asp-page="Projects/Delete" asp-route-id="@item.Id">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @* Pagination Links *@
+    <nav aria-label="Project pagination">
+        <ul class="pagination">
+            <li class="page-item @(Model.Projects.PageNumber <= 1 ? "disabled" : "")">
+                <a class="page-link" asp-page="./Index"
+                   asp-route-pageNumber="@(Model.Projects.PageNumber - 1)"
+                   asp-route-pageSize="@Model.Projects.PageSize"
+                   asp-route-searchQuery="@Model.QueryParameters.SearchQuery"
+                   asp-route-sortBy="@Model.QueryParameters.SortBy"
+                   asp-route-sortOrder="@Model.QueryParameters.SortOrder">Previous</a>
+            </li>
+            @for (int i = 1; i <= Model.Projects.TotalPages; i++)
+            {
+                <li class="page-item @(i == Model.Projects.PageNumber ? "active" : "")">
+                    <a class="page-link" asp-page="./Index"
+                       asp-route-pageNumber="@i"
+                       asp-route-pageSize="@Model.Projects.PageSize"
+                       asp-route-searchQuery="@Model.QueryParameters.SearchQuery"
+                       asp-route-sortBy="@Model.QueryParameters.SortBy"
+                       asp-route-sortOrder="@Model.QueryParameters.SortOrder">@i</a>
+                </li>
+            }
+            <li class="page-item @(Model.Projects.PageNumber >= Model.Projects.TotalPages ? "disabled" : "")">
+                <a class="page-link" asp-page="./Index"
+                   asp-route-pageNumber="@(Model.Projects.PageNumber + 1)"
+                   asp-route-pageSize="@Model.Projects.PageSize"
+                   asp-route-searchQuery="@Model.QueryParameters.SearchQuery"
+                   asp-route-sortBy="@Model.QueryParameters.SortBy"
+                   asp-route-sortOrder="@Model.QueryParameters.SortOrder">Next</a>
+            </li>
+        </ul>
+    </nav>
+}
+else if (Model.Projects != null && !Model.Projects.Items.Any())
+{
+    <p>No projects found.</p>
+}
+else
+{
+    <p>Error loading projects.</p>
+    @* Optional: Display error message from TempData or Model *@
+    @* <div class="alert alert-danger">@TempData["ErrorMessage"]</div> *@
+}

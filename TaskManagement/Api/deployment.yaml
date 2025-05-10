@@ -1,0 +1,329 @@
+# deployment.yaml (Backend API Deployment)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-backend
+  labels:
+    app: taskmanagement-backend
+spec:
+  replicas: 2 # Start with 2 replicas for basic availability
+  selector:
+    matchLabels:
+      app: taskmanagement-backend
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-backend
+    spec:
+      containers:
+      - name: taskmanagement-backend
+        # Replace with your Docker image name and tag
+        # The Dockerfile builds the TaskManagement.Api project
+        image: your-dockerhub-username/taskmanagement-backend:latest
+        ports:
+        - containerPort: 80 # The port your ASP.NET Core app listens on
+        # Optional: Resource requests and limits
+        # resources:
+        #   requests:
+        #     cpu: "100m"
+        #     memory: "128Mi"
+        #   limits:
+        #     cpu: "500m"
+        #     memory: "512Mi"
+        env: # Pass configuration via environment variables (recommended for containers)
+        - name: ConnectionStrings__DefaultConnection # Double underscore for nested config
+          valueFrom:
+            secretKeyRef: # Use Kubernetes Secrets for sensitive data
+              name: taskmanagement-secrets
+              key: db-connection-string
+        - name: AWS__Region
+          value: "your-aws-region" # e.g., us-east-1
+        - name: AWS__Cognito__UserPoolId
+          value: "your-cognito-user-pool-id" # e.g., us-east-1_xxxxxxxxx"
+        - name: AWS__Cognito__ClientId
+          value: "your-cognito-app-client-id" # e.g., xxxxxxxxxxxxxxxxxxxxxx"
+        # RabbitMQ connection details using Kubernetes Service name
+        - name: RabbitMQ__Host
+          value: "rabbitmq-service" # Use the Kubernetes Service name for RabbitMQ
+        - name: RabbitMQ__Username
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets # Assuming you have RabbitMQ secrets
+              key: username
+        - name: RabbitMQ__Password
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets
+              key: password
+        # Redis connection details using Kubernetes Service name
+        - name: Redis__Configuration
+          value: "redis-service:6379" # Use the Kubernetes Service name for Redis and its port
+        # Add other environment variables for logging, etc.
+
+        # --- Kubernetes Health Probes ---
+        livenessProbe:
+          httpGet:
+            path: /healthz # Endpoint for liveness checks (overall health, includes DB, RabbitMQ, Redis)
+            port: 80
+          initialDelaySeconds: 15 # Delay before the first probe
+          periodSeconds: 20 # How often to perform the probe
+          timeoutSeconds: 5 # Timeout for the probe
+          failureThreshold: 3 # Number of failed probes before the container is considered unhealthy
+
+        readinessProbe:
+          httpGet:
+            path: /ready # Endpoint for readiness checks (e.g., checks DB, RabbitMQ, Redis)
+            port: 80
+          initialDelaySeconds: 10 # Delay before the first probe
+          periodSeconds: 10 # How often to perform the probe
+          timeoutSeconds: 5 # Timeout for the probe
+          failureThreshold: 3 # Number of failed probes before the container is considered unready
+
+      # Optional: ImagePullSecrets if using a private registry
+      # imagePullSecrets:
+      # - name: regcred
+---
+# service.yaml (Backend API Service - Changed to ClusterIP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskmanagement-backend-service # Name used by YARP to connect
+spec:
+  selector:
+    app: taskmanagement-backend # Selects the pods created by the deployment
+  ports:
+    - protocol: TCP
+      port: 80 # The port the service listens on
+      targetPort: 80 # The port on the pod the service forwards traffic to
+  type: ClusterIP # Accessible only within the cluster (internal to the VPC)
+---
+# yarp-deployment.yaml (New Deployment for YARP)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-proxy
+  labels:
+    app: taskmanagement-proxy
+spec:
+  replicas: 1 # Start with 1 replica for the proxy
+  selector:
+    matchLabels:
+      app: taskmanagement-proxy
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-proxy
+    spec:
+      containers:
+      - name: taskmanagement-proxy
+        # Replace with your Docker image name and tag for the YARP proxy
+        image: your-dockerhub-username/taskmanagement-proxy:latest # You'll need a Dockerfile for the proxy
+        ports:
+        - containerPort: 80 # The port YARP listens on
+        env: # Pass configuration via environment variables
+        # Configure YARP to forward to the backend service using Kubernetes Service name
+        - name: ReverseProxy__Clusters__taskmanagementCluster__Destinations__backend__Address
+          value: "http://taskmanagement-backend-service:80" # Use the internal K8s Service name and its port
+        # Copy Rate Limiting configuration from appsettings.json or pass as env vars
+        # Example for Fixed Window:
+        # RateLimiting__FixedWindow__PermitLimit: 5
+        # RateLimiting__FixedWindow__WindowSeconds: 10
+        ASPNETCORE_ENVIRONMENT: Development # Or Production
+        # Add other configuration for YARP if needed
+        # Optional: Resource requests and limits
+        # resources:
+        #   requests:
+        #     cpu: "50m"
+        #     memory: "64Mi"
+        #   limits:
+        #     cpu: "200m"
+        #     memory: "256Mi"
+      # Optional: ImagePullSecrets if using a private registry
+      # imagePullSecrets:
+      # - name: regcred
+---
+# yarp-service.yaml (New Service for YARP - Exposed Externally)
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskmanagement-proxy-service
+spec:
+  selector:
+    app: taskmanagement-proxy # Selects the pods created by the YARP deployment
+  ports:
+    - protocol: TCP
+      port: 80 # The port the service listens on (external)
+      targetPort: 80 # The port on the YARP pod the service forwards traffic to
+  type: LoadBalancer # Expose the YARP proxy externally (provisions cloud load balancer)
+  # type: NodePort # Alternative for testing/dev
+---
+# rabbitmq-deployment.yaml (Placeholder for RabbitMQ)
+# You would typically deploy RabbitMQ using a Helm chart or official manifests
+# This is a minimal example for illustration.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1 # Start with 1 replica for RabbitMQ
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management # Use RabbitMQ image with management plugin
+        ports:
+        - containerPort: 5672 # AMQP port
+        - containerPort: 15672 # Management UI port
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets # Reference RabbitMQ secrets
+              key: username
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets
+              key: password
+        # Optional: Add healthcheck
+        # healthcheck:
+        #   test: ["CMD", "rabbitmq-diagnostics", "check_port"]
+        #   interval: 10s
+        #   timeout: 5s
+        #   retries: 5
+---
+# rabbitmq-service.yaml (Placeholder for RabbitMQ Service)
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service # Name used by the backend to connect
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      protocol: TCP
+      port: 5672
+      targetPort: 5672
+    - name: management
+      protocol: TCP
+      port: 15672
+      targetPort: 15672
+  type: ClusterIP # Accessible only within the cluster
+---
+# redis-deployment.yaml (New Deployment for Redis)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1 # Start with 1 replica for Redis (consider Sentinel/Cluster for HA)
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest # Use the latest Redis image
+        ports:
+        - containerPort: 6379 # Default Redis port
+        # Optional: Add resource requests and limits
+        # resources:
+        #   requests:
+        #     cpu: "50m"
+        #     memory: "64Mi"
+        #   limits:
+        #     cpu: "200m"
+        #     memory: "256Mi"
+        # Optional: Add persistence using volumes
+        # volumeMounts:
+        # - name: redis-data
+        #   mountPath: /data
+      # Optional: Add volumes for persistence
+      # volumes:
+      # - name: redis-data
+      #   persistentVolumeClaim:
+      #     claimName: redis-pvc # Define a PersistentVolumeClaim
+---
+# redis-service.yaml (New Service for Redis)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service # Name used by the backend to connect
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379 # The port the service listens on
+      targetPort: 6379 # The port on the Redis pod
+  type: ClusterIP # Accessible only within the cluster
+---
+# frontend-deployment.yaml (New Deployment for Frontend)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-frontend
+  labels:
+    app: taskmanagement-frontend
+spec:
+  replicas: 2 # Start with 2 replicas for the frontend
+  selector:
+    matchLabels:
+      app: taskmanagement-frontend
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-frontend
+    spec:
+      containers:
+      - name: taskmanagement-frontend
+        # Replace with your Docker image name and tag for the frontend
+        image: your-dockerhub-username/taskmanagement-frontend:latest # You'll need a Dockerfile for the frontend
+        ports:
+        - containerPort: 80 # The port the frontend listens on
+        env: # Pass configuration via environment variables
+        # Configure the frontend to use the YARP proxy address
+        - name: ApiBaseUrl
+          value: "http://taskmanagement-proxy-service:80/" # Use YARP service name and its port
+        ASPNETCORE_ENVIRONMENT: Production # Or Development
+        # Optional: Resource requests and limits
+        # resources:
+        #   requests:
+        #     cpu: "50m"
+        #     memory: "64Mi"
+        #   limits:
+        #     cpu: "200m"
+        #     memory: "256Mi"
+      # Optional: ImagePullSecrets if using a private registry
+      # imagePullSecrets:
+      # - name: regcred
+---
+# frontend-service.yaml (New Service for Frontend - Exposed Externally)
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskmanagement-frontend-service
+spec:
+  selector:
+    app: taskmanagement-frontend # Selects the pods created by the frontend deployment
+  ports:
+    - protocol: TCP
+      port: 80 # The port the service listens on (external)
+      targetPort: 80 # The port on the frontend pod the service forwards traffic to
+  type: LoadBalancer # Expose the frontend externally (provisions cloud load balancer)
+  # type: NodePort # Alternative for testing/dev
