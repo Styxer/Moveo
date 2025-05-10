@@ -1,36 +1,33 @@
-﻿using Amazon.CognitoIdentityProvider.Model;
-using Amazon.CognitoIdentityProvider;
+﻿using Amazon.CognitoIdentityProvider;
+using Amazon.CognitoIdentityProvider.Model;
+using Application.DTOs.Auth;
+using Application.Interfaces;
 using Application.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
-using Application.Interfaces;
 
-namespace TaskManagement.Infrastructure.Services
-{
-    // This is the infrastructure-specific implementation of the authentication service
+namespace Infrastructure.Services {
+  
     public class AuthService : IAuthService
     {
-        private readonly IAmazonCognitoIdentityProvider _cognitoClient; // Infrastructure dependency
+        private readonly IAmazonCognitoIdentityProvider _cognitoClient; 
         private readonly ILogger<AuthService> _logger;
-        // Inject IOptions for configuration
         private readonly AwsCognitoOptions _cognitoOptions;
-        // Define a retry policy for external service calls (Cognito)
         private readonly AsyncRetryPolicy _cognitoRetryPolicy;
-
 
         public AuthService(IAmazonCognitoIdentityProvider cognitoClient,
                            ILogger<AuthService> logger,
-                           IOptions<AwsCognitoOptions> cognitoOptions) // Inject IOptions
+                           IOptions<AwsCognitoOptions> cognitoOptions) 
         {
             _cognitoClient = cognitoClient;
             _logger = logger;
-            _cognitoOptions = cognitoOptions.Value; // Get the configuration values
+            _cognitoOptions = cognitoOptions.Value; 
 
-            // Define a retry policy for transient Cognito errors
+       
             _cognitoRetryPolicy = Policy
-                .Handle<AmazonCognitoIdentityProviderException>(ex => ex.StatusCode == System.Net.HttpStatusCode.InternalServerError || // Example transient errors
+                .Handle<AmazonCognitoIdentityProviderException>(ex => ex.StatusCode == System.Net.HttpStatusCode.InternalServerError || 
                                                                      ex.StatusCode == System.Net.HttpStatusCode.GatewayTimeout ||
                                                                      ex.Message.Contains("throttling", StringComparison.OrdinalIgnoreCase)) // Handle throttling
                 .WaitAndRetryAsync(5, retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 100), // Exponential backoff with jitter
@@ -46,8 +43,8 @@ namespace TaskManagement.Infrastructure.Services
         {
             try
             {
-                // Wrap the Cognito API call with the retry policy
-                var authResponse = await _cognitoRetryPolicy.ExecuteAsync(async (ctx) =>
+               
+                var authResponse = await _cognitoRetryPolicy.ExecuteAsync(async () =>
                 {
                     _logger.LogTrace("Executing Cognito InitiateAuth for user {Username}", username);
                     var authRequest = new InitiateAuthRequest
@@ -60,10 +57,9 @@ namespace TaskManagement.Infrastructure.Services
                             { "PASSWORD", password }
                         }
                     };
-                    // Add context for logging in the retry policy
-                    ctx["OperationKey"] = $"CognitoLogin:{username}";
-                    return await _cognitoClient.InitiateAuthAsync(authRequest, ctx.CancellationToken);
-                }, Policy.NoOpAsync().CreateExecutionContext()); // Pass a simple context
+
+                    return await _cognitoClient.InitiateAuthAsync(authRequest);
+                });
 
 
                 if (authResponse.AuthenticationResult != null)
@@ -73,11 +69,11 @@ namespace TaskManagement.Infrastructure.Services
                         IdToken = authResponse.AuthenticationResult.IdToken,
                         AccessToken = authResponse.AuthenticationResult.AccessToken,
                         RefreshToken = authResponse.AuthenticationResult.RefreshToken,
-                        ExpiresIn = authResponse.AuthenticationResult.ExpiresIn,
+                        ExpiresIn = authResponse.AuthenticationResult.ExpiresIn ?? int.MaxValue,
                         TokenType = authResponse.AuthenticationResult.TokenType
                     };
                 }
-                // Handle cases like NEW_PASSWORD_REQUIRED etc. if implementing full flow
+              
                 throw new UnauthorizedAccessException("Authentication failed.");
             }
             catch (UserNotFoundException ex)

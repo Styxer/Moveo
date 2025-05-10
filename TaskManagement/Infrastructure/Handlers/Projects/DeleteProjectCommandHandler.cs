@@ -20,18 +20,13 @@ namespace Infrastructure.Handlers.Projects
         IDistributedCache cache)
         : IRequestHandler<DeleteProjectCommand, Unit>
     {
-        private readonly IRepository<Project> _projectRepository = projectRepository; 
-
-    
-
-
         // Inject IDistributedCache
 
         public async Task<Unit> Handle(DeleteProjectCommand request, CancellationToken cancellationToken)
         {
             logger.LogInformation("Handling DeleteProjectCommand for project {ProjectId} by user {UserId}, isAdmin: {IsAdmin}", request.ProjectId, request.UserId, request.IsAdmin);
 
-            var project = await _projectRepository.GetByIdAsync(request.ProjectId)!;
+            var project = await projectRepository.GetByIdAsync(request.ProjectId)!;
 
             if (project == null)
             {
@@ -46,8 +41,8 @@ namespace Infrastructure.Handlers.Projects
                 throw new ForbiddenAccessException("You do not have permission to delete this project.");
             }
 
-            _projectRepository.Remove(project);
-            await _projectRepository.SaveChangesAsync();
+            projectRepository.Remove(project);
+            await projectRepository.SaveChangesAsync();
 
             logger.LogInformation("Project {ProjectId} deleted successfully.", request.ProjectId);
 

@@ -23,7 +23,6 @@ using MassTransit;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using TaskManagement.Application.MediatR;
-using TaskManagement.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

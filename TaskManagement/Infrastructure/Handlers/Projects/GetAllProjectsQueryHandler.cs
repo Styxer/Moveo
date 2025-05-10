@@ -21,8 +21,6 @@ namespace Infrastructure.Handlers.Projects
         IDistributedCache cache)
         : IRequestHandler<GetAllProjectsQuery, PagedResultDto<ProjectDto>>
     {
-        private readonly IRepository<Project> _projectRepository = projectRepository; 
-
         public async Task<PagedResultDto<ProjectDto>> Handle(GetAllProjectsQuery request, CancellationToken cancellationToken)
         {
             logger.LogInformation("Handling GetAllProjectsQuery for user {UserId}, isAdmin: {IsAdmin}, Query: {Query}", request.UserId, request.IsAdmin, request.QueryParameters.SearchQuery);
@@ -46,7 +44,7 @@ namespace Infrastructure.Handlers.Projects
             // --- End Cache Lookup ---
 
 
-            var query = _projectRepository.AsQueryable();
+            var query = projectRepository.AsQueryable();
 
             // RBAC: Admins see all, Users only see their own
             if (!request.IsAdmin)
@@ -58,20 +56,20 @@ namespace Infrastructure.Handlers.Projects
             if (!string.IsNullOrWhiteSpace(request.QueryParameters.SearchQuery))
             {
                 var searchQuery = request.QueryParameters.SearchQuery.ToLower();
-                query = query.Where(p => p.Name.ToLower().Contains(searchQuery) ||
-                                         (p.Description != null && p.Description.ToLower().Contains(searchQuery)));
+                query = query.Where(x => x.Name.ToLower().Contains(searchQuery) ||
+                                         (x.Description.ToLower().Contains(searchQuery)));
             }
 
             // Apply Sorting
-            query = query.ApplySorting(request.QueryParameters.SortBy, request.QueryParameters.SortOrder);
+            query = query.(request.QueryParameters.SortBy, request.QueryParameters.SortOrder);
 
             // Apply pagination - uses extension from Application layer
-            var pagedProjects = await query.ToPagedResultAsync(request.QueryParameters.PageNumber, request.QueryParameters.PageSize);
+            var pagedProjects = await query.(request.QueryParameters.PageNumber, request.QueryParameters.PageSize);
 
             // Use AutoMapper
             var projectDtos = mapper.Map<IEnumerable<ProjectDto>>(pagedProjects.Items);
 
-            var result = new PagedResultDto<ProjectDto>
+            var result = new PagedResultDto<ProjectDto>()
             {
                 Items = projectDtos,
                 TotalCount = pagedProjects.TotalCount,
@@ -87,7 +85,7 @@ namespace Infrastructure.Handlers.Projects
             var jsonResult = JsonSerializer.Serialize(result);
             await cache.SetStringAsync(cacheKey, jsonResult, cacheOptions, cancellationToken);
             logger.LogInformation("Cached result for query {CacheKey}", cacheKey);
-            // --- End Cache Write ---
+           
 
 
             return result;

@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Application.Events.Task
+﻿using TaskStatus = Domain.Models.TaskStatus;
+namespace Application.Events.Tasks
 {
     public record TaskUpdatedEvent
     {

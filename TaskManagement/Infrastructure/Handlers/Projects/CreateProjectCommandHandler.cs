@@ -22,10 +22,6 @@ namespace Infrastructure.Handlers.Projects
         IPublishEndpoint publishEndpoint, 
         IDistributedCache cache)
         : IRequestHandler<CreateProjectCommand, ProjectDto>{
-    
-
-
-
 
         public async Task<ProjectDto> Handle(CreateProjectCommand request, CancellationToken cancellationToken)
         {

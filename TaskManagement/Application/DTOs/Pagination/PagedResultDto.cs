@@ -1,8 +1,8 @@
 ﻿namespace Application.DTOs.Pagination
 {
-    public class PagedResultDto<T>(IEnumerable<T> items)
+    public class PagedResultDto<T>()
     {
-        public IEnumerable<T> Items { get; set; } = items;
+        public IEnumerable<T> Items { get; set; }
         public int TotalCount { get; set; }
         public int PageNumber { get; set; }
         public int PageSize { get; set; }
