@@ -1,20 +1,29 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens; 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Amazon.CognitoIdentityProvider; 
-using TaskManagement.Infrastructure.Services;
+using Amazon.CognitoIdentityProvider;
 using System.Text.Json;
+using Api.Middleware;
+using Application.Behaviors;
 using Application.Commands.Projects;
 using Application.Interfaces;
 using Application.Mapping;
-using Application.Options; 
+using Application.Options;
+using Application.Validators.Projects;
 using FluentValidation; 
 using FluentValidation.AspNetCore;
+using Infrastructure.Consumers;
+using Infrastructure.Data;
 using Infrastructure.Handlers.Projects;
+using Infrastructure.Repository;
+using Infrastructure.Services;
 using MediatR; 
 using MassTransit;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using TaskManagement.Application.MediatR;
+using TaskManagement.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,42 +64,44 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // --- Add Repositories using Scrutor ---
 builder.Services.Scan(scan => scan
-    .FromAssemblies(typeof(Repository<>).Assembly) // Scan the Infrastructure assembly
-    .AddClasses(classes => classes.AssignableTo(typeof(IRepository<>))) // Find classes implementing IRepository<>
-    .AsMatchingInterface() // Register them against their matching interface (e.g., Repository<T> as IRepository<T>)
-    .WithScopedLifetime()); // Register as Scoped
+    .FromAssemblies(typeof(Repository<>).Assembly) 
+    .AddClasses(classes => classes.AssignableTo(typeof(IRepository<>))) 
+    .AsMatchingInterface() 
+    .WithScopedLifetime()); 
 
 // Manual registration for specific services if needed (like AuthService due to constructor parameters)
 builder.Services.AddScoped<IAuthService>(provider =>
 {
     var cognitoClient = provider.GetRequiredService<IAmazonCognitoIdentityProvider>();
     var logger = provider.GetRequiredService<ILogger<AuthService>>();
-    // Inject IOptions<AwsCognitoOptions> instead of reading directly from IConfiguration
-    var cognitoOptions = provider.GetRequiredService<IOptions<AwsCognitoOptions>>();
-    return new Infrastructure.Services.AuthService(cognitoClient, logger, cognitoOptions);
+ 
+     var cognitoOptions = provider.GetRequiredService<IOptions<AwsCognitoOptions>>();
+    return new AuthService(cognitoClient, logger, cognitoOptions);
 });
 
 // --- Add MediatR Handlers using Scrutor ---
 builder.Services.Scan(scan => scan
-    .FromAssemblies(typeof(CreateProjectCommandHandler).Assembly) // Scan the Infrastructure assembly for handlers
-    .AddClasses(classes => classes.AssignableTo(typeof(IRequestHandler<,>)) // Find classes implementing IRequestHandler<,>
-                                .OrAssignableTo(typeof(IRequestHandler<>))) // Find classes implementing IRequestHandler<>
+    .FromAssemblies(typeof(CreateProjectCommandHandler).Assembly) 
+    .AddClasses(classes => classes.AssignableTo(typeof(IRequestHandler<,>)))
     .AsImplementedInterfaces() // Register them against all implemented interfaces (IRequestHandler<,> or IRequestHandler<>)
-    .WithScopedLifetime()); // Register as Scoped
+    .AddClasses(classes => classes.AssignableTo(typeof(IRequestHandler<>)))
+    .AsImplementedInterfaces() 
+    .WithScopedLifetime()); 
 
 // --- Add AutoMapper ---
-builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly); // Scan the Application assembly for AutoMapper profiles
+builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly); 
 
 
 // --- Add FluentValidation Validators using Scrutor ---
-builder.Services.AddFluentValidationAutoValidation() // Enables automatic validation (integrates with MVC)
-                .AddFluentValidationClientsideAdapters(); // Optional: Add client-side adapters
+builder.Services.AddFluentValidationAutoValidation() 
+                .AddFluentValidationClientsideAdapters(); 
+
 // Register validators from the Application assembly using Scrutor
 builder.Services.Scan(scan => scan
-    .FromAssemblies(typeof(CreateProjectRequestDtoValidator).Assembly) // Scan the Application assembly for validators
-    .AddClasses(classes => classes.AssignableTo(typeof(IValidator<>))) // Find classes implementing IValidator<>
-    .AsImplementedInterfaces() // Register them against all implemented interfaces
-    .WithTransientLifetime()); // Validators are typically Transient
+    .FromAssemblies(typeof(CreateProjectRequestDtoValidator).Assembly) 
+    .AddClasses(classes => classes.AssignableTo(typeof(IValidator<>)))
+    .AsImplementedInterfaces() 
+    .WithTransientLifetime()); 
 
 
 // --- Add MediatR ---
@@ -100,12 +111,9 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssemblyContaining<CreateProjectCommand>();
 
     // Register MediatR Pipeline Behaviors in the order they should execute
-    // Order matters: Logging -> Validation -> Transaction -> Handler
-    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>)); // Add Logging Behavior
-    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>)); // Add Validation Behavior
-    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>)); // Add Transaction Behavior
-
-    // Note: Handlers are registered separately using Scrutor above
+    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>)); 
+    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>)); 
 });
 
 
@@ -113,6 +121,7 @@ builder.Services.AddMediatR(cfg =>
 builder.Services.AddMassTransit(x =>
 {
     // Add consumers from the Infrastructure assembly using Scrutor
+    x.AddConsumersFromNamespaceContaining<ProjectCreatedConsumer>();
     x.AddConsumersFromNamespaceContaining<ProjectCreatedConsumer>();
     x.UsingRabbitMq((context, cfg) =>
     {
@@ -133,23 +142,20 @@ builder.Services.AddMassTransit(x =>
     // Configure the Entity Framework Core Outbox
     x.AddEntityFrameworkOutbox<AppDbContext>(o =>
     {
-        o.QueryLimit = 10;
+        o.QueryMessageLimit = 10;
         o.QueryDelay = TimeSpan.FromSeconds(10);
-        o.InboxCheckInterval = TimeSpan.FromSeconds(10);
-        o.OutboxCleanupInterval = TimeSpan.FromMinutes(1);
-        o.TableCleanupQueryDelay = TimeSpan.FromMinutes(5);
-        o.UseIsolationLevel(System.Transactions.IsolationLevel.ReadCommitted);
-        // o.UseBusOutbox(); // Use this if you want the Outbox to use the bus's transaction instead of the DB transaction (less common with EF Core)
+        o.QueryTimeout = TimeSpan.FromSeconds(10);
+        o.IsolationLevel = IsolationLevel.ReadCommitted;
     });
 });
 
 // --- Add Distributed Cache (Redis) ---
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    // Inject IOptions<RedisOptions> to get Redis configuration
+   
     var redisOptions = builder.Services.BuildServiceProvider().GetRequiredService<IOptions<RedisOptions>>().Value;
-    options.Configuration = redisOptions.Configuration;
-    // Optional: options.InstanceName = redisOptions.InstanceName;
+    options.Configuration = redisOptions?.Configuration;
+   
 });
 
 
@@ -167,7 +173,7 @@ builder.Services.AddAuthentication(options =>
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 }).AddJwtBearer(options =>
 {
-    // Inject IOptions<AwsCognitoOptions> to get UserPoolId for Authority and ValidIssuer
+
     var cognitoOptions = builder.Services.BuildServiceProvider().GetRequiredService<IOptions<AwsCognitoOptions>>().Value;
 
     // Configure JWT validation for AWS Cognito
@@ -175,15 +181,14 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        ValidateAudience = false, // Cognito JWTs don't have a standard 'aud' claim for the client app
+        ValidateAudience = false, 
         ValidateLifetime = true,
         ValidIssuer = $"https://cognito-idp.{builder.Configuration["AWS:Region"]}.amazonaws.com/{cognitoOptions.UserPoolId}",
-        // You might need to configure the Audience if you set up an App Client with a specific audience
-        // ValidAudience = cognitoOptions.ClientId, // Or a different audience if configured
-        ClockSkew = TimeSpan.Zero // No clock skew tolerance
+
+        ClockSkew = TimeSpan.Zero 
     };
 
-    // Optional: Configure event handlers for logging/debugging
+    //Configure event handlers for logging/debugging
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>
@@ -195,8 +200,8 @@ builder.Services.AddAuthentication(options =>
         OnTokenValidated = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            // Log claims or user info if needed
-            // logger.LogInformation("Token validated for user: {Name}", context.Principal.Identity.Name);
+           
+             logger.LogInformation("Token validated for user: {Name}", context.Principal.Identity.Name);
             return Task.CompletedTask;
         }
     };
@@ -206,59 +211,33 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     // Example policy if needed, but [Authorize(Roles="Admin")] is simpler for this case
-    // options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    // options.AddPolicy("OwnerOrAdmin", policy => policy.RequireAssertion(context =>
-    // {
-    //     // Custom logic to check if user is owner OR admin
-    //     // This is more complex and might be better handled in services
-    //     return false; // Placeholder
-    // }));
+     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+     options.AddPolicy("OwnerOrAdmin", policy => policy.RequireAssertion(context => false)); //TODO: remove place holdedr
 });
 
 // --- Health Checks ---
 builder.Services.AddHealthChecks()
     // Add a health check for the PostgreSQL database
-    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection"),
+    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty,
                name: "PostgreSQL Database", // Name for the health check
-               failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded, // Degraded if fails
-               tags: new[] { "db", "ready" }) // Tags for filtering checks
-                                              // Add a health check for the RabbitMQ bus
-    .AddRabbitMQ(rabbitMqConnectionString: $"amqp://{builder.Configuration["RabbitMQ:Username"]}:{builder.Configuration["RabbitMQ:Password"]}@{builder.Configuration["RabbitMQ:Host"]}",
-                 name: "RabbitMQ Bus",
-                 failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
-                 tags: new[] { "messaging", "ready" })
+               failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded, 
+               tags: ["db", "ready"])
+       // Add a health check for the RabbitMQ bus
+
+    .AddRabbitMQ()
     // Add a health check for the Redis cache
-    .AddRedis(redisConnectionString: builder.Configuration["Redis:Configuration"],
+    .AddRedis(redisConnectionString: builder.Configuration["Redis:Configuration"] ?? string.Empty,
               name: "Redis Cache",
               failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
-              tags: new[] { "cache", "ready" });
+              tags: ["cache", "ready"]);
 
 
-// Add Logging (default ASP.NET Core logging is configured via appsettings) (Infrastructure/Cross-cutting concern)
+// Add Logging 
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole(); // Log to console
-
-// --- AutoMapper Profile --- (Application/Cross-cutting concern)
-// This profile should ideally live in the Application layer
-// It's defined here for completeness, but place it in TaskManagement.Application
-/*
-public class MappingProfile : Profile
-{
-    public MappingProfile()
-    {
-        CreateMap<CreateProjectRequestDto, Project>();
-        CreateMap<UpdateProjectRequestDto, Project>();
-        CreateMap<Project, ProjectDto>();
-
-        CreateMap<CreateTaskRequestDto, Task>();
-        CreateMap<UpdateTaskRequestDto, Task>();
-        CreateMap<Task, TaskDto>();
-    }
-}
-*/
+builder.Logging.AddConsole(); 
 
 
-// --- App Building and Middleware Configuration --- (API Layer)
+// --- App Building and Middleware Configuration 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -272,15 +251,15 @@ else
 {
     // Use custom error handling middleware in production
     app.UseMiddleware<ErrorHandlingMiddleware>();
-    // app.UseExceptionHandler("/Error"); // Alternative built-in handler
-    app.UseHsts(); // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseHsts();
+    app.UseHttpsRedirection();
 }
 
-// app.UseHttpsRedirection(); // Redirect HTTP to HTTPS (recommended in production)
+  
 
-app.UseRouting(); // Needed for endpoint routing
+app.UseRouting();
 
-app.UseAuthentication(); // Must be before UseAuthorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 
@@ -288,7 +267,7 @@ app.UseAuthorization();
 // Basic health check endpoint
 app.MapHealthChecks("/healthz", new HealthCheckOptions
 {
-    // Optional: Configure a custom response writer for more detailed output
+    
     ResponseWriter = async (context, report) =>
     {
         context.Response.ContentType = "application/json";
@@ -297,7 +276,7 @@ app.MapHealthChecks("/healthz", new HealthCheckOptions
     }
 });
 
-// Health check endpoint specifically for readiness probes (e.g., checks DB ready)
+
 app.MapHealthChecks("/ready", new HealthCheckOptions
 {
     Predicate = healthCheck => healthCheck.Tags.Contains("ready"), // Only include checks tagged with "ready"
@@ -312,11 +291,6 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 
 app.MapControllers(); // Maps controller routes
 
-// Optional: Apply database migrations on startup (careful with this in production)
-// using (var scope = app.Services.CreateScope())
-// {
-//     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-//     dbContext.Database.Migrate(); // Run EF Core migrations, including Outbox tables
-// }
+
 
 app.Run();
