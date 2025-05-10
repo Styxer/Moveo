@@ -1,11 +1,11 @@
-﻿// TaskManagement.Application/MediatR/TransactionBehavior.cs
-using MediatR; // Needed for IPipelineBehavior and RequestHandlerDelegate
-using Microsoft.EntityFrameworkCore; // Needed for DbContext and transactions
-using Microsoft.Extensions.Logging; // Needed for ILogger
+﻿
+using MediatR; 
+using Microsoft.EntityFrameworkCore; 
+using Microsoft.Extensions.Logging; 
 using System.Threading;
 using System.Threading.Tasks;
-using System; // Needed for Exception
-using TaskManagement.Infrastructure.Data; // Reference the AppDbContext from Infrastructure
+using System; 
+
 
 namespace TaskManagement.Application.MediatR
 {
