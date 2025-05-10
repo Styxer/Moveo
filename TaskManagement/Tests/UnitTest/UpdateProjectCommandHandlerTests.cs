@@ -1,44 +1,63 @@
-﻿using AutoMapper;
-using MassTransit;
-using MediatR;
-using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Logging;
+﻿using Application.Commands.Projects;
+using Application.DTOs.Projects;
+using Application.Interfaces;
+using Domain.Models;
+using Infrastructure.Handlers.Projects;
 using MockQueryable;
-using Moq;
+using Task = System.Threading.Tasks.Task;
+
+namespace Tests.UnitTest;
 
 public class UpdateProjectCommandHandlerTests
 {
     private readonly Mock<IRepository<Project>> _mockProjectRepository;
-    private readonly Mock<ILogger<UpdateProjectCommandHandler>> _mockLogger;
-    private readonly Mock<IMapper> _mockMapper; // Mock AutoMapper
-    private readonly Mock<IPublishEndpoint> _mockPublishEndpoint; // Mock the publish endpoint
-    private readonly Mock<IDistributedCache> _mockCache; // Mock the distributed cache
+    private readonly Mock<IMapper> _mockMapper; 
+    private readonly Mock<IPublishEndpoint> _mockPublishEndpoint;
+    private readonly Mock<IDistributedCache> _mockCache; 
     private readonly UpdateProjectCommandHandler _handler;
 
-    private readonly List<Project> _testProjects; // Sample data for tests
+    private readonly List<Project> _testProjects; 
 
     public UpdateProjectCommandHandlerTests()
     {
         _mockProjectRepository = new Mock<IRepository<Project>>();
-        _mockLogger = new Mock<ILogger<UpdateProjectCommandHandler>>();
-        _mockMapper = new Mock<IMapper>(); // Mock AutoMapper
+        Mock<ILogger<UpdateProjectCommandHandler>> mockLogger = new();
+        _mockMapper = new Mock<IMapper>();
         _mockPublishEndpoint = new Mock<IPublishEndpoint>();
         _mockCache = new Mock<IDistributedCache>();
 
         _handler = new UpdateProjectCommandHandler(
             _mockProjectRepository.Object,
-            _mockLogger.Object,
-            _mockMapper.Object, // Use the mocked mapper
+            mockLogger.Object,
+            _mockMapper.Object,
             _mockPublishEndpoint.Object,
             _mockCache.Object);
 
         // Initialize sample data
-        _testProjects = new List<Project>
+        _testProjects =
+        [
+            new Project
             {
-                new Project { Id = Guid.NewGuid(), Name = "Alpha Project", Description = "Project about Alpha", OwnerId = "user1" },
-                new Project { Id = Guid.NewGuid(), Name = "Beta Project", Description = "Project about Beta", OwnerId = "user1" },
-                new Project { Id = Guid.NewGuid(), Name = "Gamma Project", Description = "Project about Gamma", OwnerId = "user2" },
-            };
+                Id = Guid.NewGuid(), 
+                Name = "Alpha Project",
+                Description = "Project about Alpha",
+                OwnerId = "user1"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(),
+                Name = "Beta Project", 
+                Description = "Project about Beta",
+                OwnerId = "user1"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(),
+                Name = "Gamma Project", 
+                Description = "Project about Gamma",
+                OwnerId = "user2"
+            }
+        ];
     }
 
     [Fact]
@@ -49,24 +68,22 @@ public class UpdateProjectCommandHandlerTests
         var projectIdToUpdate = _testProjects.First(p => p.OwnerId == userId && p.Name == "Alpha Project").Id;
         var existingProject = _testProjects.First(p => p.Id == projectIdToUpdate);
         var updateDto = new UpdateProjectRequestDto { Name = "Updated Alpha", Description = "Updated Description" };
-        var command = new TaskManagement.Application.Commands.Projects.UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: false);
+        var command = new UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: false);
 
         _mockProjectRepository.Setup(r => r.GetByIdAsync(projectIdToUpdate)).ReturnsAsync(existingProject);
-        // Mock AsQueryable().AnyAsync() to return false for duplicate name check
+      
         var mockProjectsQueryable = _testProjects.AsQueryable().BuildMock();
         _mockProjectRepository.Setup(r => r.AsQueryable()).Returns(mockProjectsQueryable);
-        mockProjectsQueryable.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<Project, bool>>>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        //mockProjectsQueryable.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<Project, bool>>>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
-        // Mock AutoMapper mapping to update the existing object
+
         _mockMapper.Setup(m => m.Map(updateDto, existingProject));
 
-        // Mock SaveChangesAsync
+     
         _mockProjectRepository.Setup(r => r.SaveChangesAsync()).ReturnsAsync(1);
 
-        // Mock Publish Endpoint (verify it's called)
         _mockPublishEndpoint.Setup(p => p.Publish(It.IsAny<Application.Events.Projects.ProjectUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-
-        // Mock Cache Remove
+      
         _mockCache.Setup(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
 
@@ -74,10 +91,10 @@ public class UpdateProjectCommandHandlerTests
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
-        Assert.Equal(Unit.Value, result); // Update command returns Unit
+        Assert.Equal(Unit.Value, result); 
 
         _mockProjectRepository.Verify(r => r.GetByIdAsync(projectIdToUpdate), Times.Once);
-        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Once); // Verify validation check
+        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Once);
         _mockMapper.Verify(m => m.Map(updateDto, existingProject), Times.Once);
         _mockProjectRepository.Verify(r => r.SaveChangesAsync(), Times.Once);
         _mockCache.Verify(c => c.RemoveAsync($"project_{projectIdToUpdate}", It.IsAny<CancellationToken>()), Times.Once);
@@ -88,7 +105,7 @@ public class UpdateProjectCommandHandlerTests
             e => e.ProjectId == projectIdToUpdate && e.Name == updateDto.Name && e.Description == updateDto.Description
         ), It.IsAny<CancellationToken>()), Times.Once);
 
-        // Verify the entity was updated (check the original object passed to SaveChangesAsync if possible, or rely on integration tests)
+       
         Assert.Equal(updateDto.Name, existingProject.Name);
         Assert.Equal(updateDto.Description, existingProject.Description);
     }
@@ -98,39 +115,30 @@ public class UpdateProjectCommandHandlerTests
     {
         // Arrange
         var userId = "adminUser";
-        var projectIdToUpdate = _testProjects.First(p => p.OwnerId == "user1").Id; // Owned by another user
+        var projectIdToUpdate = _testProjects.First(p => p.OwnerId == "user1").Id;
         var existingProject = _testProjects.First(p => p.Id == projectIdToUpdate);
         var updateDto = new UpdateProjectRequestDto { Name = "Updated by Admin", Description = "Admin Desc" };
-        var command = new TaskManagement.Application.Commands.Projects.UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: true);
+        var command = new UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: true);
 
         _mockProjectRepository.Setup(r => r.GetByIdAsync(projectIdToUpdate)).ReturnsAsync(existingProject);
-        // Mock AsQueryable().AnyAsync() to return false for duplicate name check
+   
         var mockProjectsQueryable = _testProjects.AsQueryable().BuildMock();
         _mockProjectRepository.Setup(r => r.AsQueryable()).Returns(mockProjectsQueryable);
-        mockProjectsQueryable.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<Project, bool>>>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
-
-
-        // Mock AutoMapper mapping to update the existing object
+       // mockProjectsQueryable.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<Project, bool>>>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+       
         _mockMapper.Setup(m => m.Map(updateDto, existingProject));
-
-        // Mock SaveChangesAsync
         _mockProjectRepository.Setup(r => r.SaveChangesAsync()).ReturnsAsync(1);
-
-        // Mock Publish Endpoint (verify it's called)
         _mockPublishEndpoint.Setup(p => p.Publish(It.IsAny<Application.Events.Projects.ProjectUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-
-        // Mock Cache Remove
         _mockCache.Setup(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-
-
+        
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
-        Assert.Equal(Unit.Value, result); // Update command returns Unit
+        Assert.Equal(Unit.Value, result); 
 
         _mockProjectRepository.Verify(r => r.GetByIdAsync(projectIdToUpdate), Times.Once);
-        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Once); // Verify validation check
+        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Once);
         _mockMapper.Verify(m => m.Map(updateDto, existingProject), Times.Once);
         _mockProjectRepository.Verify(r => r.SaveChangesAsync(), Times.Once);
         _mockCache.Verify(c => c.RemoveAsync($"project_{projectIdToUpdate}", It.IsAny<CancellationToken>()), Times.Once);
@@ -155,22 +163,21 @@ public class UpdateProjectCommandHandlerTests
         var projectIdToUpdate = _testProjects.First(p => p.OwnerId == "user1").Id;
         var existingProject = _testProjects.First(p => p.Id == projectIdToUpdate);
         var updateDto = new UpdateProjectRequestDto { Name = "New Name", Description = "New Desc" };
-        var command = new TaskManagement.Application.Commands.Projects.UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: false);
+        var command = new UpdateProjectCommand(projectIdToUpdate, updateDto, userId, isAdmin: false);
 
         _mockProjectRepository.Setup(r => r.GetByIdAsync(projectIdToUpdate)).ReturnsAsync(existingProject);
 
         // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _handler.Handle(command, CancellationToken.None));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _handler.Handle(command, CancellationToken.None));
 
         _mockProjectRepository.Verify(r => r.GetByIdAsync(projectIdToUpdate), Times.Once);
-        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Never); // Validation check should not happen if auth fails first
-        _mockMapper.Verify(m => m.Map(It.IsAny<UpdateProjectRequestDto>(), It.IsAny<Project>()), Times.Never); // Mapping should not happen
+        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Never); 
+        _mockMapper.Verify(m => m.Map(It.IsAny<UpdateProjectRequestDto>(), It.IsAny<Project>()), Times.Never);
         _mockProjectRepository.Verify(r => r.SaveChangesAsync(), Times.Never); // Save should not happen
-        _mockCache.Verify(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never); // Cache should not be touched
-        _mockPublishEndpoint.Verify(p => p.Publish(It.IsAny<Application.Events.Projects.ProjectUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Never); // Event should not be published
+        _mockCache.Verify(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockPublishEndpoint.Verify(p => p.Publish(It.IsAny<Application.Events.Projects.ProjectUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Never); 
     }
 
-    // Add more tests for UpdateProjectCommandHandler covering other scenarios...
+    // TODO :more tests for UpdateProjectCommandHandler covering other scenarios...
 
 }

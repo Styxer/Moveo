@@ -1,41 +1,76 @@
-﻿using AutoMapper;
-using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Logging;
+﻿using System.Text.Json;
+using Application.DTOs.Pagination;
+using Application.DTOs.Projects;
+using Application.Interfaces;
+using Application.Queries.Projects;
+using Domain.Models;
+using Infrastructure.Handlers.Projects;
 using MockQueryable;
-using Moq;
+using Task = System.Threading.Tasks.Task;
+
+namespace Tests.UnitTest;
 
 public class GetAllProjectsQueryHandlerTests
 {
     private readonly Mock<IRepository<Project>> _mockProjectRepository;
-    private readonly Mock<ILogger<GetAllProjectsQueryHandler>> _mockLogger;
-    private readonly Mock<IMapper> _mockMapper; // Mock AutoMapper
-    private readonly Mock<IDistributedCache> _mockCache; // Mock the distributed cache
+    private readonly Mock<IMapper> _mockMapper; 
+    private readonly Mock<IDistributedCache> _mockCache; 
     private readonly GetAllProjectsQueryHandler _handler;
 
-    private readonly List<Project> _testProjects; // Sample data for tests
+    private readonly List<Project> _testProjects; 
 
     public GetAllProjectsQueryHandlerTests()
     {
         _mockProjectRepository = new Mock<IRepository<Project>>();
-        _mockLogger = new Mock<ILogger<GetAllProjectsQueryHandler>>();
-        _mockMapper = new Mock<IMapper>(); // Mock AutoMapper
+        Mock<ILogger<GetAllProjectsQueryHandler>> mockLogger = new();
+        _mockMapper = new Mock<IMapper>();
         _mockCache = new Mock<IDistributedCache>();
 
         _handler = new GetAllProjectsQueryHandler(
             _mockProjectRepository.Object,
-            _mockLogger.Object,
-            _mockMapper.Object, // Use the mocked mapper
+            mockLogger.Object,
+            _mockMapper.Object, 
             _mockCache.Object);
 
         // Initialize sample data
-        _testProjects = new List<Project>
+        _testProjects =
+        [
+            new Project
             {
-                new Project { Id = Guid.NewGuid(), Name = "Alpha Project", Description = "Project about Alpha", OwnerId = "user1" },
-                new Project { Id = Guid.NewGuid(), Name = "Beta Project", Description = "Project about Beta", OwnerId = "user1" },
-                new Project { Id = Guid.NewGuid(), Name = "Gamma Project", Description = "Project about Gamma", OwnerId = "user2" },
-                new Project { Id = Guid.NewGuid(), Name = "Delta Project", Description = "Project about Delta", OwnerId = "user1" },
-                new Project { Id = Guid.NewGuid(), Name = "Epsilon Initiative", Description = "Initiative Epsilon", OwnerId = "user2" }
-            };
+                Id = Guid.NewGuid(),
+                Name = "Alpha Project",
+                Description = "Project about Alpha", 
+                OwnerId = "user1"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(), 
+                Name = "Beta Project",
+                Description = "Project about Beta",
+                OwnerId = "user1"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(), 
+                Name = "Gamma Project", 
+                Description = "Project about Gamma",
+                OwnerId = "user2"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(), 
+                Name = "Delta Project",
+                Description = "Project about Delta",
+                OwnerId = "user1"
+            },
+            new Project
+            {
+                Id = Guid.NewGuid(),
+                Name = "Epsilon Initiative",
+                Description = "Initiative Epsilon",
+                OwnerId = "user2"
+            }
+        ];
     }
 
     [Fact]
@@ -45,21 +80,21 @@ public class GetAllProjectsQueryHandlerTests
         var userId = "adminUser";
         var isAdmin = true;
         var queryParameters = new ProjectQueryParameters { PageNumber = 1, PageSize = 10 };
-        var query = new TaskManagement.Application.Queries.Projects.GetAllProjectsQuery(userId, isAdmin, queryParameters);
+        var query = new GetAllProjectsQuery(userId, isAdmin, queryParameters);
 
-        // Mock the repository's AsQueryable method with all test projects
+       
         var mockProjectsQueryable = _testProjects.AsQueryable().BuildMock();
         _mockProjectRepository.Setup(r => r.AsQueryable()).Returns(mockProjectsQueryable);
 
-        // Mock AutoMapper mapping
-        var projectDtos = _mockMapper.Object.Map<IEnumerable<ProjectDto>>(_testProjects); // Use real mapper for this part
+        
+        var projectDtos = _mockMapper.Object.Map<IEnumerable<ProjectDto>>(_testProjects);
         _mockMapper.Setup(m => m.Map<IEnumerable<ProjectDto>>(It.IsAny<IEnumerable<Project>>())).Returns(projectDtos);
 
 
-        // Mock Cache GetStringAsync to return null (cache miss)
+ 
         _mockCache.Setup(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((string)null);
 
-        // Mock Cache SetStringAsync
+    
         _mockCache.Setup(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
 
@@ -82,23 +117,19 @@ public class GetAllProjectsQueryHandlerTests
         var userId = "user1";
         var isAdmin = false;
         var queryParameters = new ProjectQueryParameters { PageNumber = 1, PageSize = 10 };
-        var query = new TaskManagement.Application.Queries.Projects.GetAllProjectsQuery(userId, isAdmin, queryParameters);
+        var query = new GetAllProjectsQuery(userId, isAdmin, queryParameters);
 
         var ownedProjects = _testProjects.Where(p => p.OwnerId == userId).ToList();
 
-        // Mock the repository's AsQueryable method with all test projects
+
         var mockProjectsQueryable = _testProjects.AsQueryable().BuildMock();
         _mockProjectRepository.Setup(r => r.AsQueryable()).Returns(mockProjectsQueryable);
 
-        // Mock AutoMapper mapping
+    
         var projectDtos = _mockMapper.Object.Map<IEnumerable<ProjectDto>>(ownedProjects); // Use real mapper for this part
         _mockMapper.Setup(m => m.Map<IEnumerable<ProjectDto>>(It.IsAny<IEnumerable<Project>>())).Returns(projectDtos);
-
-
-        // Mock Cache GetStringAsync to return null (cache miss)
+       
         _mockCache.Setup(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((string)null);
-
-        // Mock Cache SetStringAsync
         _mockCache.Setup(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
 
@@ -110,10 +141,10 @@ public class GetAllProjectsQueryHandlerTests
         Assert.NotNull(result);
         Assert.Equal(ownedProjectsCount, result.TotalCount);
         Assert.Equal(ownedProjectsCount, result.Items.Count());
-        Assert.True(result.Items.All(p => p.OwnerId == userId)); // Verify all returned projects are owned by the user
+        Assert.True(result.Items.All(p => p.OwnerId == userId)); 
         _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Once);
-        _mockCache.Verify(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once); // Cache lookup
-        _mockCache.Verify(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()), Times.Once); // Cache write
+        _mockCache.Verify(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once); 
+        _mockCache.Verify(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()), Times.Once); 
     }
 
     [Fact]
@@ -123,22 +154,27 @@ public class GetAllProjectsQueryHandlerTests
         var userId = "user1";
         var isAdmin = false;
         var queryParameters = new ProjectQueryParameters { PageNumber = 1, PageSize = 10 };
-        var query = new TaskManagement.Application.Queries.Projects.GetAllProjectsQuery(userId, isAdmin, queryParameters);
+        var query = new GetAllProjectsQuery(userId, isAdmin, queryParameters);
 
         // Simulate a cached result
         var cachedProjects = new PagedResultDto<ProjectDto>
         {
-            Items = new List<ProjectDto> { new ProjectDto { Id = Guid.NewGuid(), Name = "Cached Project", Description = "From Cache" } },
+            Items = new List<ProjectDto> { new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Cached Project",
+                Description = "From Cache"
+            } },
             TotalCount = 1,
             PageNumber = 1,
             PageSize = 10
         };
         var cachedJson = JsonSerializer.Serialize(cachedProjects);
 
-        // Mock Cache GetStringAsync to return the cached result
+      
         _mockCache.Setup(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(cachedJson);
 
-        // Mock the repository and mapper to ensure they are *not* called
+        
         _mockProjectRepository.Setup(r => r.AsQueryable()).Throws(new Exception("Repository should not be called"));
         _mockMapper.Setup(m => m.Map<IEnumerable<ProjectDto>>(It.IsAny<IEnumerable<Project>>())).Throws(new Exception("Mapper should not be called"));
 
@@ -150,13 +186,13 @@ public class GetAllProjectsQueryHandlerTests
         Assert.NotNull(result);
         Assert.Equal(cachedProjects.TotalCount, result.TotalCount);
         Assert.Equal(cachedProjects.Items.Count(), result.Items.Count());
-        Assert.Equal(cachedProjects.Items.First().Name, result.Items.First().Name); // Verify content
+        Assert.Equal(cachedProjects.Items.First().Name, result.Items.First().Name); 
 
-        _mockCache.Verify(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once); // Cache lookup
-        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Never); // Repository should not be called
-        _mockMapper.Verify(m => m.Map<IEnumerable<ProjectDto>>(It.IsAny<IEnumerable<Project>>()), Times.Never); // Mapper should not be called
-        _mockCache.Verify(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()), Times.Never); // Cache write should not happen
+        _mockCache.Verify(c => c.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once); 
+        _mockProjectRepository.Verify(r => r.AsQueryable(), Times.Never); 
+        _mockMapper.Verify(m => m.Map<IEnumerable<ProjectDto>>(It.IsAny<IEnumerable<Project>>()), Times.Never); 
+        _mockCache.Verify(c => c.SetStringAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()), Times.Never); 
     }
-    // Add tests for filtering, sorting, and pagination within GetAllProjectsQueryHandler
+    // TODO: tests for filtering, sorting, and pagination within GetAllProjectsQueryHandler
 
 }
