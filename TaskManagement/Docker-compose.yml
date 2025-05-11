@@ -1,0 +1,135 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+
+  # PostgreSQL Database Service
+  db:
+    image: postgres:15 
+    container_name: taskmanager-db
+    environment:
+      POSTGRES_DB: taskmanager
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432" 
+    volumes:
+      - db_data:/var/lib/postgresql/data 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser"] 
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker Service
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: taskmanager-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672" 
+      - "15672:15672" 
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq 
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache Service
+  redis:
+    image: redis:latest
+    container_name: taskmanager-redis
+    ports:
+      - "6379:6379" 
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"] 
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Service
+  taskmanagement-backend:
+    build:
+      context: . 
+      dockerfile: TaskManagement.Api/Dockerfile 
+    container_name: taskmanagement-backend
+    environment:    
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=taskmanager;Username=myuser;Password=mypassword"      
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Username: guest
+      RabbitMQ__Password: guest 
+      Redis__Configuration: redis:6379  
+      AWS__Region: "aws-region"
+      AWS__Cognito__UserPoolId: "cognito-user-pool-id"
+      AWS__Cognito__ClientId: "cognito-app-client-id"     
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5001:80" 
+    depends_on:
+      db:
+        condition: service_healthy 
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy 
+   
+     healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthz"] 
+       interval: 30s
+       timeout: 10s
+       retries: 3
+
+  # YARP Proxy Service
+  taskmanagement-proxy:
+    build:
+      context: . 
+      dockerfile: TaskManagement.Proxy/Dockerfile
+    container_name: taskmanagement-proxy
+    environment:      
+      ReverseProxy__Clusters__taskmanagementCluster__Destinations__backend__Address: "http://taskmanagement-backend:80" 
+  
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5000:80" 
+    depends_on:
+      taskmanagement-backend:
+        condition: service_started 
+   
+    healthcheck:
+       test: ["CMD", "curl", "-f", "http://localhost/healthz"] # If YARP has its own health check
+       interval: 30s
+       timeout: 5s
+       retries: 3
+
+  # Frontend Application Service
+  taskmanagement-frontend:
+    build:
+      context: . 
+      dockerfile: TaskManagement.Frontend/Dockerfile 
+    container_name: taskmanagement-frontend
+    environment:
+   
+      ApiBaseUrl: "http://taskmanagement-proxy:80/"
+      ASPNETCORE_ENVIRONMENT: Development 
+    ports:
+      - "5002:80" 
+    depends_on:
+      taskmanagement-proxy:
+        condition: service_started 
+   
+     healthcheck:
+       test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  db_data:
+  rabbitmq_data: 
+  redis_data: 
