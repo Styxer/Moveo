@@ -1,0 +1,13 @@
+#Backend API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskmanagement-backend-service 
+spec:
+  selector:
+    app: taskmanagement-backend 
+  ports:
+    - protocol: TCP
+      port: 80 
+      targetPort: 80 
+  type: ClusterIP
