@@ -1,11 +1,11 @@
-﻿// TaskManagement.Frontend/Services/ApiClient.cs
+
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json; // Using System.Text.Json for serialization
-using TaskManagement.Application.DTOs.Auth; // Reference Auth DTOs
-using TaskManagement.Application.DTOs.Projects; // Reference Project DTOs
-using TaskManagement.Application.DTOs.Tasks; // Reference Task DTOs
-using TaskManagement.Application.DTOs.Pagination; // Reference Pagination DTOs
+using System.Text.Json;
+using TaskManagement.Application.DTOs.Auth; 
+using TaskManagement.Application.DTOs.Projects;
+using TaskManagement.Application.DTOs.Tasks; 
+using TaskManagement.Application.DTOs.Pagination; 
 
 namespace TaskManagement.Frontend.Services
 {
@@ -13,28 +13,22 @@ namespace TaskManagement.Frontend.Services
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<ApiClient> _logger;
-        private readonly IHttpContextAccessor _httpContextAccessor; // To access HttpContext for session/cookies
+        private readonly IHttpContextAccessor _httpContextAccessor; 
 
         public ApiClient(HttpClient httpClient, ILogger<ApiClient> logger, IHttpContextAccessor httpContextAccessor)
         {
             _httpClient = httpClient;
             _logger = logger;
-            _httpContextAccessor = httpContextAccessor;
-
-            // Configure HttpClient base address (should point to the YARP proxy)
-            // This can be set via configuration in Program.cs
-            // _httpClient.BaseAddress = new Uri("http://localhost:5000/"); // Example local YARP address
+            _httpContextAccessor = httpContextAccessor;       
         }
 
-        // Helper to get the JWT token from session/cookies
+      
         private string? GetJwtToken()
-        {
-            // You might store the token in a cookie or session state
-            // Example using session:
+        {            
             return _httpContextAccessor.HttpContext?.Session.GetString("JwtToken");
         }
 
-        // Helper to add Authorization header
+       
         private void AddAuthorizationHeader()
         {
             var token = GetJwtToken();
@@ -43,8 +37,7 @@ namespace TaskManagement.Frontend.Services
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             }
             else
-            {
-                // Clear the header if no token is available
+            {               
                 _httpClient.DefaultRequestHeaders.Authorization = null;
             }
         }
@@ -62,14 +55,12 @@ namespace TaskManagement.Frontend.Services
                 return JsonSerializer.Deserialize<AuthResponseDto>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            {
-                // Handle authentication/authorization failures (e.g., return null or throw specific exception)
+            {               
                 _logger.LogWarning("Login failed: {StatusCode}", response.StatusCode);
                 return null;
             }
             else
-            {
-                // Handle other API errors
+            {                
                 _logger.LogError("API Error during login: {StatusCode}", response.StatusCode);
                 throw new HttpRequestException($"API Error: {response.StatusCode}");
             }
@@ -79,9 +70,7 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<PagedResultDto<ProjectDto>?> GetProjectsAsync(ProjectQueryParameters queryParameters)
         {
-            AddAuthorizationHeader(); // Add JWT token
-
-            // Build query string from query parameters
+            AddAuthorizationHeader();             
             var queryString = $"?pageNumber={queryParameters.PageNumber}&pageSize={queryParameters.PageSize}";
             if (!string.IsNullOrEmpty(queryParameters.SearchQuery))
             {
@@ -96,7 +85,6 @@ namespace TaskManagement.Frontend.Services
                 queryString += $"&sortOrder={Uri.EscapeDataString(queryParameters.SortOrder)}";
             }
 
-
             var response = await _httpClient.GetAsync($"/api/projects{queryString}");
 
             if (response.IsSuccessStatusCode)
@@ -105,16 +93,14 @@ namespace TaskManagement.Frontend.Services
                 return JsonSerializer.Deserialize<PagedResultDto<ProjectDto>>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            {
-                // Handle authentication/authorization failures
-                _logger.LogWarning("Access denied to get projects: {StatusCode}", response.StatusCode);
-                // You might redirect to login here in the Razor Page code
+            {              
+                _logger.LogWarning("Access denied to get projects: {StatusCode}", response.StatusCode);               
                 return null;
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _logger.LogWarning("Projects endpoint not found: {StatusCode}", response.StatusCode);
-                return null; // Or empty result
+                return null; 
             }
             else
             {
@@ -125,7 +111,7 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<ProjectDto?> GetProjectByIdAsync(Guid id)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var response = await _httpClient.GetAsync($"/api/projects/{id}");
 
             if (response.IsSuccessStatusCode)
@@ -152,7 +138,7 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<ProjectDto?> CreateProjectAsync(CreateProjectRequestDto createRequest)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var jsonContent = new StringContent(JsonSerializer.Serialize(createRequest), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync("/api/projects", jsonContent);
 
@@ -167,12 +153,9 @@ namespace TaskManagement.Frontend.Services
                 return null;
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            {
-                // Handle validation or conflict errors from the API
+            {     
                 var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning("API Error during create project: {StatusCode} - {Error}", response.StatusCode, errorContent);
-                // You might want to deserialize the error response to show specific validation messages
-                // For now, re-throw or return a specific error object
+                _logger.LogWarning("API Error during create project: {StatusCode} - {Error}", response.StatusCode, errorContent);             
                 throw new HttpRequestException($"API Error: {response.StatusCode} - {errorContent}");
             }
             else
@@ -184,13 +167,13 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<bool> UpdateProjectAsync(Guid id, UpdateProjectRequestDto updateRequest)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var jsonContent = new StringContent(JsonSerializer.Serialize(updateRequest), Encoding.UTF8, "application/json");
             var response = await _httpClient.PutAsync($"/api/projects/{id}", jsonContent);
 
             if (response.IsSuccessStatusCode)
             {
-                return true; // 204 No Content is success
+                return true; 
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
@@ -203,8 +186,7 @@ namespace TaskManagement.Frontend.Services
                 return false;
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            {
-                // Handle validation or conflict errors from the API
+            {                
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("API Error during update project {ProjectId}: {StatusCode} - {Error}", id, response.StatusCode, errorContent);
                 throw new HttpRequestException($"API Error: {response.StatusCode} - {errorContent}");
@@ -218,12 +200,12 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<bool> DeleteProjectAsync(Guid id)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var response = await _httpClient.DeleteAsync($"/api/projects/{id}");
 
             if (response.IsSuccessStatusCode)
             {
-                return true; // 204 No Content is success
+                return true; 
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
@@ -246,9 +228,7 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<PagedResultDto<TaskDto>?> GetTasksByProjectIdAsync(Guid projectId, TaskQueryParameters queryParameters)
         {
-            AddAuthorizationHeader(); // Add JWT token
-
-            // Build query string from query parameters
+            AddAuthorizationHeader(); \            
             var queryString = $"?pageNumber={queryParameters.PageNumber}&pageSize={queryParameters.PageSize}";
             if (!string.IsNullOrEmpty(queryParameters.SearchQuery))
             {
@@ -278,7 +258,7 @@ namespace TaskManagement.Frontend.Services
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _logger.LogWarning("Project {ProjectId} not found for tasks: {StatusCode}", projectId, response.StatusCode);
-                return null; // Or empty result
+                return null; 
             }
             else
             {
@@ -289,8 +269,8 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<TaskDto?> GetTaskByIdAsync(Guid taskId)
         {
-            AddAuthorizationHeader(); // Add JWT token
-            var response = await _httpClient.GetAsync($"/api/tasks/{taskId}"); // Note the global task route
+            AddAuthorizationHeader();
+            var response = await _httpClient.GetAsync($"/api/tasks/{taskId}"); 
 
             if (response.IsSuccessStatusCode)
             {
@@ -316,7 +296,7 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<TaskDto?> CreateTaskAsync(Guid projectId, CreateTaskRequestDto createRequest)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var jsonContent = new StringContent(JsonSerializer.Serialize(createRequest), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync($"/api/projects/{projectId}/tasks", jsonContent);
 
@@ -336,8 +316,7 @@ namespace TaskManagement.Frontend.Services
                 return null;
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            {
-                // Handle validation or conflict errors from the API
+            {               
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("API Error during create task for project {ProjectId}: {StatusCode} - {Error}", projectId, response.StatusCode, errorContent);
                 throw new HttpRequestException($"API Error: {response.StatusCode} - {errorContent}");
@@ -351,13 +330,13 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<bool> UpdateTaskAsync(Guid taskId, UpdateTaskRequestDto updateRequest)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader();
             var jsonContent = new StringContent(JsonSerializer.Serialize(updateRequest), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PutAsync($"/api/tasks/{taskId}", jsonContent); // Note the global task route
+            var response = await _httpClient.PutAsync($"/api/tasks/{taskId}", jsonContent); 
 
             if (response.IsSuccessStatusCode)
             {
-                return true; // 204 No Content is success
+                return true; 
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
@@ -370,8 +349,7 @@ namespace TaskManagement.Frontend.Services
                 return false;
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            {
-                // Handle validation or conflict errors from the API
+            {               
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("API Error during update task {TaskId}: {StatusCode} - {Error}", taskId, response.StatusCode, errorContent);
                 throw new HttpRequestException($"API Error: {response.StatusCode} - {errorContent}");
@@ -385,12 +363,12 @@ namespace TaskManagement.Frontend.Services
 
         public async Task<bool> DeleteTaskAsync(Guid taskId)
         {
-            AddAuthorizationHeader(); // Add JWT token
+            AddAuthorizationHeader(); 
             var response = await _httpClient.DeleteAsync($"/api/tasks/{taskId}"); // Note the global task route
 
             if (response.IsSuccessStatusCode)
             {
-                return true; // 204 No Content is success
+                return true; 
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
