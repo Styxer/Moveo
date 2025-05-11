@@ -1,0 +1,35 @@
+# Deployment for YARP
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-proxy
+  labels:
+    app: taskmanagement-proxy
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: taskmanagement-proxy
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-proxy
+    spec:
+      containers:
+      - name: taskmanagement-proxy
+        # TODO: replace Docker image name and tag for the YARP proxy
+        image: your-dockerhub-username/taskmanagement-proxy:latest 
+        ports:
+        - containerPort: 80 
+        env:        
+        - name: ReverseProxy__Clusters__taskmanagementCluster__Destinations__backend__Address
+          value: "http://taskmanagement-backend-service:80"  
+        ASPNETCORE_ENVIRONMENT: Development        
+         resources:
+           requests:
+             cpu: "50m"
+             memory: "64Mi"
+          limits:
+             cpu: "200m"
+            memory: "256Mi"
+     
