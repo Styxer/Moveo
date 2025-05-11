@@ -1,0 +1,35 @@
+#  Deployment for Frontend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-frontend
+  labels:
+    app: taskmanagement-frontend
+spec:
+  replicas: 2 
+  selector:
+    matchLabels:
+      app: taskmanagement-frontend
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-frontend
+    spec:
+      containers:
+      - name: taskmanagement-frontend
+        # TODO: Replace with  Docker image name and tag for the frontend
+        image: your-dockerhub-username/taskmanagement-frontend:latest 
+        ports:
+        - containerPort: 80 
+        env:
+        - name: ApiBaseUrl
+          value: "http://taskmanagement-proxy-service:80/"
+        ASPNETCORE_ENVIRONMENT: Production         
+         resources:
+           requests:
+            cpu: "50m"
+             memory: "64Mi"
+          limits:
+             cpu: "200m"
+             memory: "256Mi"
+    
