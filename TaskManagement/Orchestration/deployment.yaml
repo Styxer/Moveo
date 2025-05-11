@@ -1,0 +1,82 @@
+#Backend API Deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskmanagement-backend
+  labels:
+    app: taskmanagement-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: taskmanagement-backend
+  template:
+    metadata:
+      labels:
+        app: taskmanagement-backend
+    spec:
+      containers:
+      - name: taskmanagement-backend
+        # TODO: Replace with your Docker image name and tag   
+        image: dockerhub-username/taskmanagement-backend:latest
+        ports:
+        - containerPort: 80 
+       
+         resources:
+           requests:
+             cpu: "100m"
+             memory: "128Mi"
+           limits:
+            cpu: "500m"
+           memory: "512Mi"
+        env: 
+        - name: ConnectionStrings__DefaultConnection # Double underscore for nested config
+          valueFrom:
+            secretKeyRef: 
+              name: taskmanagement-secrets
+              key: db-connection-string
+        - name: AWS__Region
+          value: "aws-region"
+        - name: AWS__Cognito__UserPoolId
+          value: "cognito-user-pool-id"
+        - name: AWS__Cognito__ClientId
+          value: "cognito-app-client-id" 
+        # RabbitMQ connection details using Kubernetes Service name
+        - name: RabbitMQ__Host
+          value: "rabbitmq-service" 
+        - name: RabbitMQ__Username
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets #
+              key: username
+        - name: RabbitMQ__Password
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secrets
+              key: password
+        # Redis connection details using Kubernetes Service name
+        - name: Redis__Configuration
+          value: "redis-service:6379" 
+     
+
+        # --- Kubernetes Health Probes ---
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 15 
+          periodSeconds: 20 
+          timeoutSeconds: 5 
+          failureThreshold: 3 
+
+        readinessProbe:
+          httpGet:
+            path: /ready 
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10 
+          timeoutSeconds: 5 
+          failureThreshold: 3 
+
+     
