@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: taskmanagement-backend
-        # TODO: Replace with your Docker image name and tag   
+        # TODO: Replace with  Docker image name and tag   
         image: dockerhub-username/taskmanagement-backend:latest
         ports:
         - containerPort: 80 
@@ -31,7 +31,7 @@ spec:
             cpu: "500m"
            memory: "512Mi"
         env: 
-        - name: ConnectionStrings__DefaultConnection # Double underscore for nested config
+        - name: ConnectionStrings__DefaultConnection 
           valueFrom:
             secretKeyRef: 
               name: taskmanagement-secrets
