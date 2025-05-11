@@ -1,0 +1,13 @@
+# New Service for YARP - Exposed Externally
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskmanagement-proxy-service
+spec:
+  selector:
+    app: taskmanagement-proxy 
+  ports:
+    - protocol: TCP
+      port: 80 
+      targetPort: 80 
+  type: LoadBalancer 
