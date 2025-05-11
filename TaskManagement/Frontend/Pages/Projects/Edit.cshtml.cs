@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using TaskManagement.Application.DTOs.Projects; // Reference Project DTOs
-using TaskManagement.Frontend.Services; // Reference API Client
+using TaskManagement.Application.DTOs.Projects;
+using TaskManagement.Frontend.Services; 
 using System.Threading.Tasks;
 using System;
 
@@ -21,7 +21,7 @@ namespace TaskManagement.Frontend.Pages.Projects
         [BindProperty]
         public UpdateProjectRequestDto Project { get; set; } = new UpdateProjectRequestDto();
 
-        [BindProperty] // Keep the project ID for the POST handler
+        [BindProperty] 
         public Guid ProjectId { get; set; }
 
         public async Task<IActionResult> OnGetAsync(Guid id)
@@ -31,16 +31,16 @@ namespace TaskManagement.Frontend.Pages.Projects
             if (projectDto == null)
             {
                 _logger.LogWarning("Project {ProjectId} not found or access denied for edit.", id);
-                return RedirectToPage("/Index"); // Redirect if not found or no access
+                return RedirectToPage("/Index"); 
             }
 
-            // Map DTO to the update request model for the form
+            /
             Project = new UpdateProjectRequestDto
             {
                 Name = projectDto.Name,
                 Description = projectDto.Description
             };
-            ProjectId = id; // Store the ID
+            ProjectId = id;
 
             return Page();
         }
@@ -49,7 +49,7 @@ namespace TaskManagement.Frontend.Pages.Projects
         {
             if (!ModelState.IsValid)
             {
-                return Page(); // Re-display form with validation errors
+                return Page(); 
             }
 
             try
@@ -57,28 +57,24 @@ namespace TaskManagement.Frontend.Pages.Projects
                 var success = await _apiClient.UpdateProjectAsync(ProjectId, Project);
 
                 if (success)
-                {
-                    // Redirect to the project details page or the index page
+                {                   
                     return RedirectToPage("./Details", new { id = ProjectId });
                 }
                 else
-                {
-                    // Handle API error (e.g., access denied, not found, validation/conflict already handled)
+                {                  
                     _logger.LogWarning("API client failed to update project {ProjectId}.", ProjectId);
                     ModelState.AddModelError(string.Empty, "Failed to update project. Please try again.");
                     return Page();
                 }
             }
             catch (HttpRequestException ex)
-            {
-                // Handle HTTP request errors
+            {             
                 _logger.LogError(ex, "HTTP request error during project update for {ProjectId}.", ProjectId);
                 ModelState.AddModelError(string.Empty, $"Error updating project: {ex.Message}");
                 return Page();
             }
             catch (Exception ex)
-            {
-                // Handle other unexpected errors
+            {              
                 _logger.LogError(ex, "An unexpected error occurred during project update for {ProjectId}.", ProjectId);
                 ModelState.AddModelError(string.Empty, "An unexpected error occurred. Please try again.");
                 return Page();
